@@ -1,113 +1,145 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import { Plus, Search, User, X, Loader2, Users } from "lucide-react"
+import { Card, CardContent, CardHeader } from "@/core/components/ui/card"
+import { Button } from "@/core/components/ui/button"
+import { Badge } from "@/core/components/ui/badge"
+import { Input } from "@/core/components/ui/input"
+import { Label } from "@/core/components/ui/label"
+import {
+	Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/core/components/ui/dialog"
+import {
+	Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/core/components/ui/select"
+import {
+	Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/core/components/ui/table"
+import { Skeleton } from "@/core/components/ui/skeleton"
+import { Separator } from "@/core/components/ui/separator"
+import {
+	Avatar, AvatarFallback,
+} from "@/core/components/ui/avatar"
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api"
 const V = process.env.NEXT_PUBLIC_API_VERSION ?? "v1"
 
-interface Patient { id: string; patientNo: string; fullName: string; dateOfBirth: string; gender: string; contactEmail: string; contactPhone: string; hmoProvider: string; bloodType: string; isActive: boolean; createdAt: string }
+interface Patient {
+	id: string; patientNo: string; fullName: string; gender: string
+	dateOfBirth: string; contactNo: string; email: string
+	entitlementTypes: string[]; admissionStatus: string
+}
+
+const ENTITLEMENT_LABELS: Record<string, string> = {
+	philhealth: "PhilHealth", hmo: "HMO", cash: "Cash", senior_citizen: "Senior",
+	pwd: "PWD", ofw: "OFW", diplomat: "Diplomat",
+}
+const GENDERS = ["male", "female", "other", "prefer_not_to_say"]
+const ENTITLEMENTS = ["philhealth", "hmo", "cash", "senior_citizen", "pwd", "ofw", "diplomat"]
 
 function RegisterPatientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-	const [form, setForm] = useState({ fullName: "", dateOfBirth: "", gender: "", contactEmail: "", contactPhone: "", address: "", hmoProvider: "", insurancePolicy: "", bloodType: "", allergies: "" })
+	const [form, setForm] = useState({
+		fullName: "", gender: "male", dateOfBirth: "",
+		contactNo: "", email: "", address: "",
+		entitlementTypes: [] as string[],
+	})
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState("")
 
-	async function submit(e: React.FormEvent) {
-		e.preventDefault()
+	function toggleEntitlement(e: string) {
+		setForm(f => ({
+			...f,
+			entitlementTypes: f.entitlementTypes.includes(e)
+				? f.entitlementTypes.filter(x => x !== e)
+				: [...f.entitlementTypes, e],
+		}))
+	}
+
+	async function submit(ev: React.FormEvent) {
+		ev.preventDefault()
 		if (!form.fullName.trim()) { setError("Full name is required"); return }
 		setSaving(true); setError("")
 		try {
-			const res = await fetch(`${API}/${V}/patients`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
+			const res = await fetch(`${API}/${V}/patients`, {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(form),
+			})
 			if (!res.ok) throw new Error(await res.text())
-			onCreated(); onClose()
-		} catch (e) { setError(e instanceof Error ? e.message : "Failed to register patient") }
-		setSaving(false)
+			onCreated()
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to register patient")
+		} finally {
+			setSaving(false)
+		}
 	}
 
-	const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
-
 	return (
-		<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-			<div className="bg-background rounded-xl border shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-				<div className="flex items-center justify-between px-6 py-4 border-b">
-					<h2 className="font-semibold text-lg">🏥 Register New Patient</h2>
-					<button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl">✕</button>
-				</div>
-				<form onSubmit={submit} className="p-6 space-y-4">
-					{error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Full Name <span className="text-red-500">*</span></label>
-						<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Maria Santos" value={form.fullName} onChange={e => set("fullName", e.target.value)} />
+		<Dialog open onOpenChange={onClose}>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>Register Patient</DialogTitle>
+				</DialogHeader>
+				<form onSubmit={submit} className="space-y-4">
+					<div className="space-y-1.5">
+						<Label>Full Name *</Label>
+						<Input value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} placeholder="Juan Dela Cruz" />
 					</div>
-
 					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-sm font-medium mb-1">Date of Birth</label>
-							<input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.dateOfBirth} onChange={e => set("dateOfBirth", e.target.value)} />
+						<div className="space-y-1.5">
+							<Label>Gender</Label>
+							<Select value={form.gender} onValueChange={v => setForm(f => ({ ...f, gender: v }))}>
+								<SelectTrigger><SelectValue /></SelectTrigger>
+								<SelectContent>
+									{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g.replace(/_/g, " ")}</SelectItem>)}
+								</SelectContent>
+							</Select>
 						</div>
-						<div>
-							<label className="block text-sm font-medium mb-1">Gender</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.gender} onChange={e => set("gender", e.target.value)}>
-								<option value="">— Select —</option>
-								<option value="male">Male</option>
-								<option value="female">Female</option>
-								<option value="other">Other</option>
-							</select>
+						<div className="space-y-1.5">
+							<Label>Date of Birth</Label>
+							<Input type="date" value={form.dateOfBirth} onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))} />
 						</div>
-					</div>
-
-					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-sm font-medium mb-1">Email</label>
-							<input type="email" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="patient@email.com" value={form.contactEmail} onChange={e => set("contactEmail", e.target.value)} />
+						<div className="space-y-1.5">
+							<Label>Contact No.</Label>
+							<Input value={form.contactNo} onChange={e => setForm(f => ({ ...f, contactNo: e.target.value }))} placeholder="09XX XXX XXXX" />
 						</div>
-						<div>
-							<label className="block text-sm font-medium mb-1">Phone</label>
-							<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="09XX-XXX-XXXX" value={form.contactPhone} onChange={e => set("contactPhone", e.target.value)} />
+						<div className="space-y-1.5">
+							<Label>Email</Label>
+							<Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="patient@email.com" />
 						</div>
 					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Address</label>
-						<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Street, City" value={form.address} onChange={e => set("address", e.target.value)} />
+					<div className="space-y-1.5">
+						<Label>Address</Label>
+						<Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Street, City, Province" />
 					</div>
-
-					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-sm font-medium mb-1">HMO Provider</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.hmoProvider} onChange={e => set("hmoProvider", e.target.value)}>
-								<option value="">None</option>
-								{["PhilCare","Maxicare","Medicard","Intellicare","Caritas Health","HMO Philippines","PNB Life","Cigna"].map(h => <option key={h} value={h}>{h}</option>)}
-							</select>
+					<div className="space-y-1.5">
+						<Label>Entitlements</Label>
+						<div className="flex flex-wrap gap-2">
+							{ENTITLEMENTS.map(e => (
+								<button
+									key={e} type="button"
+									onClick={() => toggleEntitlement(e)}
+									className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+										form.entitlementTypes.includes(e)
+											? "border-primary bg-primary text-primary-foreground"
+											: "border-border bg-background text-muted-foreground hover:border-primary/60"
+									}`}
+								>
+									{ENTITLEMENT_LABELS[e]}
+								</button>
+							))}
 						</div>
-						<div>
-							<label className="block text-sm font-medium mb-1">Blood Type</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bloodType} onChange={e => set("bloodType", e.target.value)}>
-								<option value="">Unknown</option>
-								{["A+","A-","B+","B-","AB+","AB-","O+","O-"].map(b => <option key={b} value={b}>{b}</option>)}
-							</select>
-						</div>
 					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Insurance Policy No.</label>
-						<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. INS-2025-XXXXX" value={form.insurancePolicy} onChange={e => set("insurancePolicy", e.target.value)} />
-					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Known Allergies</label>
-						<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Penicillin, Sulfa drugs" value={form.allergies} onChange={e => set("allergies", e.target.value)} />
-					</div>
-
-					<div className="flex gap-3 pt-2">
-						<button type="button" onClick={onClose} className="flex-1 border rounded-lg py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-						<button type="submit" disabled={saving} className="flex-1 bg-primary text-primary-foreground rounded-lg py-2 text-sm font-medium disabled:opacity-50">
-							{saving ? "Registering…" : "Register Patient"}
-						</button>
-					</div>
+					{error && <p className="text-sm text-destructive">{error}</p>}
+					<DialogFooter>
+						<Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+						<Button type="submit" disabled={saving}>
+							{saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+							Register
+						</Button>
+					</DialogFooter>
 				</form>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -117,49 +149,117 @@ export default function PatientsPage() {
 	const [search, setSearch] = useState("")
 	const [showNew, setShowNew] = useState(false)
 
-	const load = (s?: string) => {
+	const load = useCallback(() => {
 		setLoading(true)
-		const url = s ? `${API}/${V}/patients?search=${encodeURIComponent(s)}` : `${API}/${V}/patients`
-		fetch(url).then(r => r.json()).then(d => { setPatients(Array.isArray(d) ? d : []); setLoading(false) }).catch(() => setLoading(false))
-	}
+		fetch(`${API}/${V}/patients`).then(r => r.json())
+			.then(d => setPatients(Array.isArray(d) ? d : []))
+			.catch(() => {})
+			.finally(() => setLoading(false))
+	}, [])
 
-	useEffect(() => { load() }, [])
-	useEffect(() => { const t = setTimeout(() => load(search), 400); return () => clearTimeout(t) }, [search])
+	useEffect(() => { load() }, [load])
+
+	const filtered = patients.filter(p =>
+		!search || p.fullName.toLowerCase().includes(search.toLowerCase()) || p.patientNo?.toLowerCase().includes(search.toLowerCase())
+	)
 
 	return (
 		<div className="space-y-6">
-			{showNew && <RegisterPatientModal onClose={() => setShowNew(false)} onCreated={() => load()} />}
-
 			<div className="flex items-center justify-between">
-				<div><h1 className="text-2xl font-bold">Patients</h1><p className="text-muted-foreground mt-1">{patients.length} registered patients</p></div>
-				<button onClick={() => setShowNew(true)} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90">➕ Register Patient</button>
+				<div>
+					<h1 className="text-2xl font-semibold tracking-tight">Patients</h1>
+					<p className="text-sm text-muted-foreground">{patients.length} registered patients</p>
+				</div>
+				<Button size="sm" onClick={() => setShowNew(true)}>
+					<Plus className="mr-1.5 h-4 w-4" /> Register Patient
+				</Button>
 			</div>
 
-			<input type="text" placeholder="Search by name, patient no, or email..." className="w-full border rounded-lg px-3 py-2 text-sm" value={search} onChange={e => setSearch(e.target.value)} />
+			<Card>
+				<CardHeader className="pb-3">
+					<div className="flex items-center gap-3">
+						<div className="relative flex-1">
+							<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+							<Input className="pl-8 h-9" placeholder="Search by name or patient no…" value={search} onChange={e => setSearch(e.target.value)} />
+						</div>
+						{search && (
+							<Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setSearch("")}>
+								<X className="h-4 w-4" />
+							</Button>
+						)}
+					</div>
+				</CardHeader>
+				<Separator />
+				<CardContent className="p-0">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Patient</TableHead>
+								<TableHead>Patient No.</TableHead>
+								<TableHead>Gender</TableHead>
+								<TableHead>Contact</TableHead>
+								<TableHead>Entitlements</TableHead>
+								<TableHead>Status</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{loading ? (
+								[...Array(5)].map((_, i) => (
+									<TableRow key={i}>
+										{[...Array(6)].map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
+									</TableRow>
+								))
+							) : filtered.length === 0 ? (
+								<TableRow>
+									<TableCell colSpan={6} className="py-12 text-center">
+										<div className="flex flex-col items-center gap-2 text-muted-foreground">
+											<Users className="h-8 w-8" />
+											<p className="text-sm">No patients found</p>
+										</div>
+									</TableCell>
+								</TableRow>
+							) : (
+								filtered.map(p => (
+									<TableRow key={p.id}>
+										<TableCell>
+											<div className="flex items-center gap-2.5">
+												<Avatar className="h-7 w-7">
+													<AvatarFallback className="text-xs">
+														{p.fullName.split(" ").map(n => n[0]).slice(0, 2).join("")}
+													</AvatarFallback>
+												</Avatar>
+												<span className="font-medium text-sm">{p.fullName}</span>
+											</div>
+										</TableCell>
+										<TableCell className="font-mono text-xs text-muted-foreground">{p.patientNo}</TableCell>
+										<TableCell className="text-sm capitalize text-muted-foreground">{p.gender?.replace(/_/g, " ") || "—"}</TableCell>
+										<TableCell className="text-sm text-muted-foreground">{p.contactNo || "—"}</TableCell>
+										<TableCell>
+											<div className="flex flex-wrap gap-1">
+												{(p.entitlementTypes ?? []).slice(0, 3).map(e => (
+													<Badge key={e} variant="secondary" className="text-xs">
+														{ENTITLEMENT_LABELS[e] ?? e}
+													</Badge>
+												))}
+												{(p.entitlementTypes ?? []).length > 3 && (
+													<Badge variant="outline" className="text-xs">+{p.entitlementTypes.length - 3}</Badge>
+												)}
+											</div>
+										</TableCell>
+										<TableCell>
+											<Badge variant={p.admissionStatus === "admitted" ? "default" : "outline"} className="text-xs capitalize">
+												{p.admissionStatus || "outpatient"}
+											</Badge>
+										</TableCell>
+									</TableRow>
+								))
+							)}
+						</TableBody>
+					</Table>
+				</CardContent>
+			</Card>
 
-			{loading ? <div className="space-y-2">{[...Array(5)].map((_,i) => <div key={i} className="bg-muted h-14 animate-pulse rounded-lg" />)}</div> : (
-				<div className="bg-card border rounded-xl overflow-hidden">
-					<table className="w-full text-sm">
-						<thead className="bg-muted/50">
-							<tr>{["Patient No","Full Name","Date of Birth","Gender","Contact","HMO","Blood Type","Status"].map(h => <th key={h} className="text-left px-4 py-3 font-medium">{h}</th>)}</tr>
-						</thead>
-						<tbody className="divide-y">
-							{patients.length === 0 ? <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No patients found</td></tr> : patients.map(p => (
-								<tr key={p.id} className="hover:bg-muted/30 cursor-pointer">
-									<td className="px-4 py-3 font-mono text-xs">{p.patientNo}</td>
-									<td className="px-4 py-3 font-medium">🏥 {p.fullName}</td>
-									<td className="px-4 py-3 text-muted-foreground text-xs">{p.dateOfBirth || "—"}</td>
-									<td className="px-4 py-3 text-muted-foreground capitalize text-xs">{p.gender || "—"}</td>
-									<td className="px-4 py-3"><div className="text-xs">{p.contactEmail}</div><div className="text-xs text-muted-foreground">{p.contactPhone}</div></td>
-									<td className="px-4 py-3 text-xs">{p.hmoProvider || <span className="text-muted-foreground">None</span>}</td>
-									<td className="px-4 py-3 text-xs font-mono">{p.bloodType || "—"}</td>
-									<td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{p.isActive ? "Active" : "Inactive"}</span></td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
+			{showNew && <RegisterPatientModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} />}
 		</div>
 	)
 }

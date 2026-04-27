@@ -1,87 +1,117 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import { Plus, AlertTriangle, Shield, Loader2, RefreshCw } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/core/components/ui/card"
+import { Button } from "@/core/components/ui/button"
+import { Badge } from "@/core/components/ui/badge"
+import { Input } from "@/core/components/ui/input"
+import { Label } from "@/core/components/ui/label"
+import { Textarea } from "@/core/components/ui/textarea"
+import {
+	Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/core/components/ui/dialog"
+import {
+	Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/core/components/ui/select"
+import { Skeleton } from "@/core/components/ui/skeleton"
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api"
 const V = process.env.NEXT_PUBLIC_API_VERSION ?? "v1"
 
-interface Incident { id: string; title: string; description: string; status: string; severity: string; affectedDepartment: string; createdAt: string; resolvedAt?: string }
+interface Incident {
+	id: string; title: string; description: string; severity: string
+	status: string; affectedDepts: string[]; createdAt: string; resolvedAt?: string
+}
 
-const SEV_BADGE: Record<string, string> = { critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700", medium: "bg-yellow-100 text-yellow-700", low: "bg-green-100 text-green-700" }
-const STATUS_BADGE: Record<string, string> = { active: "bg-red-100 text-red-700", monitoring: "bg-yellow-100 text-yellow-700", resolved: "bg-green-100 text-green-700", closed: "bg-gray-100 text-gray-600" }
-const DEPARTMENTS = ["Pharmacy","Billing","Emergency","Surgery","Radiology","Laboratory","Nursing","Medical Records","ICU","Outpatient","Admissions","IT","All Departments"]
+const SEVERITY_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+	critical: "destructive", high: "destructive", medium: "secondary", low: "outline",
+}
+const STATUS_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+	active: "destructive", monitoring: "secondary", resolved: "outline", closed: "outline",
+}
+const SEVERITIES = ["low", "medium", "high", "critical"]
+const STATUSES = ["active", "monitoring", "resolved", "closed"]
+const DEPARTMENTS = ["Billing","Pharmacy","Emergency","Surgery","Radiology","Laboratory","Nursing","Medical Records","ICU","Outpatient","Admissions","Dietary"]
 
 function DeclareIncidentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-	const [form, setForm] = useState({ title: "", description: "", severity: "high", affectedDepartment: "" })
+	const [form, setForm] = useState({ title: "", description: "", severity: "medium", affectedDepts: [] as string[] })
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState("")
 
-	async function submit(e: React.FormEvent) {
-		e.preventDefault()
-		if (!form.title.trim()) { setError("Incident title is required"); return }
-		if (!form.affectedDepartment) { setError("Affected department is required"); return }
-		setSaving(true); setError("")
-		try {
-			const res = await fetch(`${API}/${V}/major-incidents`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
-			if (!res.ok) throw new Error(await res.text())
-			onCreated(); onClose()
-		} catch (e) { setError(e instanceof Error ? e.message : "Failed to declare incident") }
-		setSaving(false)
+	function toggleDept(d: string) {
+		setForm(f => ({
+			...f,
+			affectedDepts: f.affectedDepts.includes(d) ? f.affectedDepts.filter(x => x !== d) : [...f.affectedDepts, d],
+		}))
 	}
 
-	const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+	async function submit(e: React.FormEvent) {
+		e.preventDefault()
+		if (!form.title.trim()) { setError("Title is required"); return }
+		setSaving(true); setError("")
+		try {
+			const res = await fetch(`${API}/${V}/major-incidents`, {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ ...form, status: "active" }),
+			})
+			if (!res.ok) throw new Error(await res.text())
+			onCreated()
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to declare incident")
+		} finally {
+			setSaving(false)
+		}
+	}
 
 	return (
-		<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-			<div className="bg-background rounded-xl border shadow-xl w-full max-w-lg">
-				<div className="flex items-center justify-between px-6 py-4 border-b">
-					<h2 className="font-semibold text-lg">🚨 Declare Major Incident</h2>
-					<button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl">✕</button>
-				</div>
-				<form onSubmit={submit} className="p-6 space-y-4">
-					{error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
-
-					<div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm text-orange-700">
-						⚠️ A Major Incident groups multiple patient cases under one record. Use this for widespread issues affecting multiple patients.
+		<Dialog open onOpenChange={onClose}>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>Declare Major Incident</DialogTitle>
+				</DialogHeader>
+				<form onSubmit={submit} className="space-y-4">
+					<div className="space-y-1.5">
+						<Label>Title *</Label>
+						<Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Brief description of the incident" />
 					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Incident Title <span className="text-red-500">*</span></label>
-						<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Pharmacy System Downtime" value={form.title} onChange={e => set("title", e.target.value)} />
+					<div className="space-y-1.5">
+						<Label>Severity</Label>
+						<Select value={form.severity} onValueChange={v => setForm(f => ({ ...f, severity: v }))}>
+							<SelectTrigger><SelectValue /></SelectTrigger>
+							<SelectContent>
+								{SEVERITIES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+							</SelectContent>
+						</Select>
 					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Description</label>
-						<textarea className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none" placeholder="What is happening? How many patients affected? What is the impact?" value={form.description} onChange={e => set("description", e.target.value)} />
+					<div className="space-y-1.5">
+						<Label>Description</Label>
+						<Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} placeholder="What happened? What is affected?" />
 					</div>
-
-					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-sm font-medium mb-1">Severity</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.severity} onChange={e => set("severity", e.target.value)}>
-								<option value="low">🟢 Low</option>
-								<option value="medium">🟡 Medium</option>
-								<option value="high">🟠 High</option>
-								<option value="critical">🔴 Critical</option>
-							</select>
-						</div>
-						<div>
-							<label className="block text-sm font-medium mb-1">Affected Department <span className="text-red-500">*</span></label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.affectedDepartment} onChange={e => set("affectedDepartment", e.target.value)}>
-								<option value="">— Select —</option>
-								{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-							</select>
+					<div className="space-y-1.5">
+						<Label>Affected Departments</Label>
+						<div className="flex flex-wrap gap-2">
+							{DEPARTMENTS.map(d => (
+								<button key={d} type="button" onClick={() => toggleDept(d)}
+									className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+										form.affectedDepts.includes(d)
+											? "border-primary bg-primary text-primary-foreground"
+											: "border-border bg-background text-muted-foreground hover:border-primary/60"
+									}`}
+								>{d}</button>
+							))}
 						</div>
 					</div>
-
-					<div className="flex gap-3 pt-2">
-						<button type="button" onClick={onClose} className="flex-1 border rounded-lg py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-						<button type="submit" disabled={saving} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50 hover:bg-red-700">
-							{saving ? "Declaring…" : "🚨 Declare Incident"}
-						</button>
-					</div>
+					{error && <p className="text-sm text-destructive">{error}</p>}
+					<DialogFooter>
+						<Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+						<Button type="submit" variant="destructive" disabled={saving}>
+							{saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+							Declare Incident
+						</Button>
+					</DialogFooter>
 				</form>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -92,32 +122,38 @@ function UpdateStatusModal({ incident, onClose, onUpdated }: { incident: Inciden
 	async function submit(e: React.FormEvent) {
 		e.preventDefault()
 		setSaving(true)
-		await fetch(`${API}/${V}/major-incidents/${incident.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) })
-		onUpdated(); onClose()
+		try {
+			const res = await fetch(`${API}/${V}/major-incidents/${incident.id}`, {
+				method: "PATCH", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ status }),
+			})
+			if (!res.ok) throw new Error(await res.text())
+			onUpdated()
+		} catch { /* ignore */ } finally { setSaving(false) }
 	}
 
 	return (
-		<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-			<div className="bg-background rounded-xl border shadow-xl w-full max-w-sm">
-				<div className="flex items-center justify-between px-6 py-4 border-b">
-					<h2 className="font-semibold">Update Incident Status</h2>
-					<button onClick={onClose} className="text-muted-foreground text-xl">✕</button>
-				</div>
-				<form onSubmit={submit} className="p-6 space-y-4">
-					<p className="text-sm text-muted-foreground">{incident.title}</p>
-					<select className="w-full border rounded-lg px-3 py-2 text-sm" value={status} onChange={e => setStatus(e.target.value)}>
-						<option value="active">🔴 Active</option>
-						<option value="monitoring">🟡 Monitoring</option>
-						<option value="resolved">🟢 Resolved</option>
-						<option value="closed">⬛ Closed</option>
-					</select>
-					<div className="flex gap-3">
-						<button type="button" onClick={onClose} className="flex-1 border rounded-lg py-2 text-sm">Cancel</button>
-						<button type="submit" disabled={saving} className="flex-1 bg-primary text-primary-foreground rounded-lg py-2 text-sm disabled:opacity-50">{saving ? "Saving…" : "Update"}</button>
-					</div>
+		<Dialog open onOpenChange={onClose}>
+			<DialogContent className="max-w-sm">
+				<DialogHeader><DialogTitle>Update Status</DialogTitle></DialogHeader>
+				<form onSubmit={submit} className="space-y-4">
+					<p className="text-sm text-muted-foreground truncate">{incident.title}</p>
+					<Select value={status} onValueChange={setStatus}>
+						<SelectTrigger><SelectValue /></SelectTrigger>
+						<SelectContent>
+							{STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+						</SelectContent>
+					</Select>
+					<DialogFooter>
+						<Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+						<Button type="submit" disabled={saving}>
+							{saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+							Update
+						</Button>
+					</DialogFooter>
 				</form>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -127,52 +163,95 @@ export default function IncidentsPage() {
 	const [showNew, setShowNew] = useState(false)
 	const [updating, setUpdating] = useState<Incident | null>(null)
 
-	const load = () => {
+	const load = useCallback(() => {
 		setLoading(true)
-		fetch(`${API}/${V}/major-incidents`).then(r => r.json()).then(d => { setIncidents(Array.isArray(d) ? d : []); setLoading(false) }).catch(() => setLoading(false))
-	}
+		fetch(`${API}/${V}/major-incidents`).then(r => r.json())
+			.then(d => setIncidents(Array.isArray(d) ? d : []))
+			.catch(() => {})
+			.finally(() => setLoading(false))
+	}, [])
 
-	useEffect(() => { load() }, [])
+	useEffect(() => { load() }, [load])
 
-	const active = incidents.filter(i => i.status === "active").length
+	const active = incidents.filter(i => i.status === "active")
+	const others = incidents.filter(i => i.status !== "active")
 
 	return (
 		<div className="space-y-6">
-			{showNew && <DeclareIncidentModal onClose={() => setShowNew(false)} onCreated={load} />}
-			{updating && <UpdateStatusModal incident={updating} onClose={() => setUpdating(null)} onUpdated={load} />}
-
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-bold">Major Incidents</h1>
-					<p className="text-muted-foreground mt-1">{active} active · {incidents.length} total</p>
+					<h1 className="text-2xl font-semibold tracking-tight">Major Incidents</h1>
+					<p className="text-sm text-muted-foreground">{active.length} active · {incidents.length} total</p>
 				</div>
-				<button onClick={() => setShowNew(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">🚨 Declare Incident</button>
+				<div className="flex gap-2">
+					<Button variant="outline" size="sm" onClick={load}>
+						<RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
+					</Button>
+					<Button size="sm" variant="destructive" onClick={() => setShowNew(true)}>
+						<Plus className="mr-1.5 h-4 w-4" /> Declare Incident
+					</Button>
+				</div>
 			</div>
 
-			{loading ? <div className="space-y-3">{[...Array(3)].map((_,i) => <div key={i} className="bg-muted h-24 animate-pulse rounded-xl" />)}</div> : (
-				<div className="grid gap-4">
-					{incidents.length === 0 ? (
-						<div className="bg-card border rounded-xl p-8 text-center text-muted-foreground">No major incidents on record. 🎉</div>
-					) : incidents.map(inc => (
-						<div key={inc.id} className={`bg-card border rounded-xl p-5 ${inc.status === "active" ? "border-red-300 dark:border-red-700" : ""}`}>
-							<div className="flex items-start justify-between mb-2">
-								<h3 className="font-semibold text-lg">{inc.status === "active" ? "🚨 " : ""}{inc.title}</h3>
-								<div className="flex items-center gap-2 shrink-0 ml-3">
-									<span className={`px-2 py-1 rounded-full text-xs font-medium ${SEV_BADGE[inc.severity] ?? ""}`}>{inc.severity}</span>
-									<span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[inc.status] ?? ""}`}>{inc.status}</span>
-									<button onClick={() => setUpdating(inc)} className="text-xs border rounded px-2 py-1 hover:bg-muted">Update Status</button>
-								</div>
-							</div>
-							<p className="text-muted-foreground text-sm">{inc.description}</p>
-							<div className="mt-3 flex gap-4 text-xs text-muted-foreground">
-								<span>📍 {inc.affectedDepartment || "Multiple departments"}</span>
-								<span>📅 Declared: {new Date(inc.createdAt).toLocaleString()}</span>
-								{inc.resolvedAt && <span>✅ Resolved: {new Date(inc.resolvedAt).toLocaleString()}</span>}
-							</div>
+			{/* Active incidents banner */}
+			{!loading && active.length > 0 && (
+				<Card className="border-destructive/40 bg-destructive/5">
+					<CardHeader className="pb-2 flex flex-row items-center gap-2">
+						<AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+						<CardTitle className="text-sm font-medium text-destructive">{active.length} Active Incident{active.length > 1 ? "s" : ""}</CardTitle>
+					</CardHeader>
+				</Card>
+			)}
+
+			{/* Incident cards */}
+			{loading ? (
+				<div className="grid gap-4 md:grid-cols-2">
+					{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
+				</div>
+			) : incidents.length === 0 ? (
+				<Card>
+					<CardContent className="py-16 text-center">
+						<div className="flex flex-col items-center gap-2 text-muted-foreground">
+							<Shield className="h-10 w-10" />
+							<p className="font-medium">No incidents reported</p>
+							<p className="text-sm">All systems operational</p>
 						</div>
+					</CardContent>
+				</Card>
+			) : (
+				<div className="grid gap-4 md:grid-cols-2">
+					{[...active, ...others].map(inc => (
+						<Card key={inc.id} className={inc.status === "active" ? "border-destructive/40" : undefined}>
+							<CardHeader className="pb-2">
+								<div className="flex items-start justify-between gap-2">
+									<CardTitle className="text-sm font-semibold leading-snug">{inc.title}</CardTitle>
+									<div className="flex shrink-0 gap-1.5">
+										<Badge variant={SEVERITY_VARIANT[inc.severity] ?? "secondary"} className="text-xs capitalize">{inc.severity}</Badge>
+										<Badge variant={STATUS_VARIANT[inc.status] ?? "secondary"} className="text-xs capitalize">{inc.status}</Badge>
+									</div>
+								</div>
+								<CardDescription className="text-xs">{new Date(inc.createdAt).toLocaleString()}</CardDescription>
+							</CardHeader>
+							<CardContent className="space-y-3">
+								{inc.description && <p className="text-sm text-muted-foreground line-clamp-2">{inc.description}</p>}
+								{(inc.affectedDepts ?? []).length > 0 && (
+									<div className="flex flex-wrap gap-1">
+										{inc.affectedDepts.map(d => <Badge key={d} variant="secondary" className="text-xs">{d}</Badge>)}
+									</div>
+								)}
+								<div className="flex justify-end">
+									<Button variant="outline" size="sm" onClick={() => setUpdating(inc)}>
+										<RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Update Status
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
 					))}
 				</div>
 			)}
+
+			{showNew && <DeclareIncidentModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} />}
+			{updating && <UpdateStatusModal incident={updating} onClose={() => setUpdating(null)} onUpdated={() => { setUpdating(null); load() }} />}
 		</div>
 	)
 }

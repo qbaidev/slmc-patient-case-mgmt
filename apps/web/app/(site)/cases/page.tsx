@@ -1,21 +1,59 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import {
+	Plus, Search, Filter, AlertCircle, Clock, CheckCircle2,
+	ChevronDown, X, Loader2, FolderOpen,
+} from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/core/components/ui/card"
+import { Button } from "@/core/components/ui/button"
+import { Badge } from "@/core/components/ui/badge"
+import { Input } from "@/core/components/ui/input"
+import { Label } from "@/core/components/ui/label"
+import {
+	Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/core/components/ui/dialog"
+import {
+	Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/core/components/ui/select"
+import {
+	Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/core/components/ui/table"
+import { Skeleton } from "@/core/components/ui/skeleton"
+import { Separator } from "@/core/components/ui/separator"
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api"
 const V = process.env.NEXT_PUBLIC_API_VERSION ?? "v1"
 
-interface Case { id: string; caseNo: string; title: string; caseType: string; priority: string; status: string; department: string; channelOrigin: string; aiSentiment: string; createdAt: string; slaDeadline: string }
+interface Case {
+	id: string; caseNo: string; title: string; caseType: string
+	priority: string; status: string; department: string
+	channelOrigin: string; createdAt: string; slaDeadline: string
+}
 interface Patient { id: string; patientNo: string; fullName: string }
 
-const PRIORITY_BADGE: Record<string, string> = { critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700", medium: "bg-yellow-100 text-yellow-700", low: "bg-green-100 text-green-700" }
-const STATUS_BADGE: Record<string, string> = { new: "bg-blue-100 text-blue-700", in_progress: "bg-yellow-100 text-yellow-700", escalated: "bg-red-100 text-red-700", resolved: "bg-green-100 text-green-700", closed: "bg-gray-100 text-gray-600", pending_patient: "bg-purple-100 text-purple-700" }
-const CHANNEL_ICON: Record<string, string> = { portal: "🌐", email: "📧", phone: "📞", in_person: "🏥", referral: "🔗" }
-const SENTIMENT_ICON: Record<string, string> = { urgent: "🔴", negative: "🟠", neutral: "⚪", positive: "🟢" }
+const PRIORITY_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+	critical: "destructive", high: "destructive", medium: "secondary", low: "outline",
+}
+const STATUS_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+	new: "default", open: "default", in_review: "secondary", pending: "secondary",
+	resolved: "outline", closed: "outline", escalated: "destructive",
+}
 const DEPARTMENTS = ["Billing","Pharmacy","Emergency","Surgery","Radiology","Laboratory","Nursing","Medical Records","ICU","Outpatient","Admissions","Dietary"]
+const CASE_TYPES = ["general_inquiry","billing","clinical","pharmacy","referral","complaint","feedback"]
+const CHANNELS = ["portal","email","phone","in_person","referral"]
+const PRIORITIES = ["low","medium","high","critical"]
+
+function isSlaBreached(deadline: string) {
+	return deadline && new Date(deadline) < new Date()
+}
 
 function NewCaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
 	const [patients, setPatients] = useState<Patient[]>([])
-	const [form, setForm] = useState({ patientId: "", title: "", description: "", caseType: "general_inquiry", priority: "medium", channelOrigin: "portal", department: "" })
+	const [form, setForm] = useState({
+		patientId: "", title: "", description: "",
+		caseType: "general_inquiry", priority: "medium",
+		channelOrigin: "portal", department: "",
+	})
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState("")
 
@@ -28,156 +66,249 @@ function NewCaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 		if (!form.title.trim()) { setError("Title is required"); return }
 		setSaving(true); setError("")
 		try {
-			const res = await fetch(`${API}/${V}/cases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, patientId: form.patientId || undefined }) })
+			const res = await fetch(`${API}/${V}/cases`, {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(form),
+			})
 			if (!res.ok) throw new Error(await res.text())
 			onCreated()
-			onClose()
-		} catch (e) { setError(e instanceof Error ? e.message : "Failed to create case") }
-		setSaving(false)
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to create case")
+		} finally {
+			setSaving(false)
+		}
 	}
 
-	const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
-
 	return (
-		<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-			<div className="bg-background rounded-xl border shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-				<div className="flex items-center justify-between px-6 py-4 border-b">
-					<h2 className="font-semibold text-lg">➕ New Patient Case</h2>
-					<button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl">✕</button>
-				</div>
-				<form onSubmit={submit} className="p-6 space-y-4">
-					{error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Patient</label>
-						<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.patientId} onChange={e => set("patientId", e.target.value)}>
-							<option value="">— Walk-in / Unknown patient —</option>
-							{patients.map(p => <option key={p.id} value={p.id}>{p.patientNo} — {p.fullName}</option>)}
-						</select>
+		<Dialog open onOpenChange={onClose}>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>New Case</DialogTitle>
+				</DialogHeader>
+				<form onSubmit={submit} className="space-y-4">
+					<div className="space-y-1.5">
+						<Label>Title *</Label>
+						<Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Brief description of the case" />
 					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Case Title <span className="text-red-500">*</span></label>
-						<input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Brief description of the concern" value={form.title} onChange={e => set("title", e.target.value)} />
-					</div>
-
-					<div>
-						<label className="block text-sm font-medium mb-1">Description</label>
-						<textarea className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none" placeholder="Detailed description..." value={form.description} onChange={e => set("description", e.target.value)} />
-					</div>
-
 					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-sm font-medium mb-1">Case Type</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.caseType} onChange={e => set("caseType", e.target.value)}>
-								{["general_inquiry","complaint","billing","medical_concern","pharmacy","scheduling","emergency","feedback"].map(t => <option key={t} value={t}>{t.replace(/_/g," ")}</option>)}
-							</select>
+						<div className="space-y-1.5">
+							<Label>Patient</Label>
+							<Select value={form.patientId} onValueChange={v => setForm(f => ({ ...f, patientId: v }))}>
+								<SelectTrigger><SelectValue placeholder="Select patient" /></SelectTrigger>
+								<SelectContent>
+									{patients.map(p => <SelectItem key={p.id} value={p.id}>{p.fullName}</SelectItem>)}
+								</SelectContent>
+							</Select>
 						</div>
-						<div>
-							<label className="block text-sm font-medium mb-1">Priority</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.priority} onChange={e => set("priority", e.target.value)}>
-								{["low","medium","high","critical"].map(p => <option key={p} value={p}>{p}</option>)}
-							</select>
+						<div className="space-y-1.5">
+							<Label>Department</Label>
+							<Select value={form.department} onValueChange={v => setForm(f => ({ ...f, department: v }))}>
+								<SelectTrigger><SelectValue placeholder="Select dept" /></SelectTrigger>
+								<SelectContent>
+									{DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="space-y-1.5">
+							<Label>Type</Label>
+							<Select value={form.caseType} onValueChange={v => setForm(f => ({ ...f, caseType: v }))}>
+								<SelectTrigger><SelectValue /></SelectTrigger>
+								<SelectContent>
+									{CASE_TYPES.map(t => <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>)}
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="space-y-1.5">
+							<Label>Priority</Label>
+							<Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+								<SelectTrigger><SelectValue /></SelectTrigger>
+								<SelectContent>
+									{PRIORITIES.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="space-y-1.5">
+							<Label>Channel</Label>
+							<Select value={form.channelOrigin} onValueChange={v => setForm(f => ({ ...f, channelOrigin: v }))}>
+								<SelectTrigger><SelectValue /></SelectTrigger>
+								<SelectContent>
+									{CHANNELS.map(c => <SelectItem key={c} value={c} className="capitalize">{c.replace(/_/g, " ")}</SelectItem>)}
+								</SelectContent>
+							</Select>
 						</div>
 					</div>
-
-					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-sm font-medium mb-1">Channel</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.channelOrigin} onChange={e => set("channelOrigin", e.target.value)}>
-								{["portal","email","phone","in_person","referral"].map(c => <option key={c} value={c}>{c.replace(/_/g," ")}</option>)}
-							</select>
-						</div>
-						<div>
-							<label className="block text-sm font-medium mb-1">Department</label>
-							<select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department} onChange={e => set("department", e.target.value)}>
-								<option value="">— Select —</option>
-								{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-							</select>
-						</div>
+					<div className="space-y-1.5">
+						<Label>Description</Label>
+						<textarea
+							value={form.description}
+							onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+							rows={3}
+							className="w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+							placeholder="Additional details…"
+						/>
 					</div>
-
-					<div className="flex gap-3 pt-2">
-						<button type="button" onClick={onClose} className="flex-1 border rounded-lg py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-						<button type="submit" disabled={saving} className="flex-1 bg-primary text-primary-foreground rounded-lg py-2 text-sm font-medium disabled:opacity-50">
-							{saving ? "Creating…" : "Create Case"}
-						</button>
-					</div>
+					{error && <p className="text-sm text-destructive">{error}</p>}
+					<DialogFooter>
+						<Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+						<Button type="submit" disabled={saving}>
+							{saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+							Create Case
+						</Button>
+					</DialogFooter>
 				</form>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
 export default function CasesPage() {
 	const [cases, setCases] = useState<Case[]>([])
 	const [loading, setLoading] = useState(true)
-	const [statusFilter, setStatusFilter] = useState("")
-	const [priorityFilter, setPriorityFilter] = useState("")
 	const [search, setSearch] = useState("")
+	const [filterStatus, setFilterStatus] = useState("all")
+	const [filterPriority, setFilterPriority] = useState("all")
 	const [showNew, setShowNew] = useState(false)
 
-	const loadCases = (st = statusFilter, pr = priorityFilter, q = search) => {
+	const load = useCallback(() => {
 		setLoading(true)
-		const params = new URLSearchParams()
-		if (st) params.set("status", st)
-		if (pr) params.set("priority", pr)
-		if (q) params.set("search", q)
-		fetch(`${API}/${V}/cases?${params}`)
-			.then(r => r.json()).then(d => { setCases(Array.isArray(d) ? d : []); setLoading(false) })
-			.catch(() => setLoading(false))
-	}
+		fetch(`${API}/${V}/cases`).then(r => r.json())
+			.then(d => setCases(Array.isArray(d) ? d : []))
+			.catch(() => {})
+			.finally(() => setLoading(false))
+	}, [])
 
-	useEffect(() => { loadCases() }, [statusFilter, priorityFilter])
-	useEffect(() => { const t = setTimeout(() => loadCases(statusFilter, priorityFilter, search), 400); return () => clearTimeout(t) }, [search])
+	useEffect(() => { load() }, [load])
 
-	const isSlaBreached = (c: Case) => c.slaDeadline && new Date(c.slaDeadline) < new Date() && !["resolved","closed"].includes(c.status)
+	const filtered = cases.filter(c => {
+		const matchSearch = !search || c.title.toLowerCase().includes(search.toLowerCase()) || c.caseNo?.toLowerCase().includes(search.toLowerCase())
+		const matchStatus = filterStatus === "all" || c.status === filterStatus
+		const matchPriority = filterPriority === "all" || c.priority === filterPriority
+		return matchSearch && matchStatus && matchPriority
+	})
 
 	return (
 		<div className="space-y-6">
-			{showNew && <NewCaseModal onClose={() => setShowNew(false)} onCreated={() => loadCases()} />}
-
 			<div className="flex items-center justify-between">
-				<div><h1 className="text-2xl font-bold">Patient Cases</h1><p className="text-muted-foreground mt-1">{cases.length} cases</p></div>
-				<button onClick={() => setShowNew(true)} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90">➕ New Case</button>
-			</div>
-
-			<div className="flex flex-wrap gap-3">
-				<input type="text" placeholder="Search cases..." className="flex-1 min-w-[200px] border rounded-lg px-3 py-2 text-sm" value={search} onChange={e => setSearch(e.target.value)} />
-				<select className="border rounded-lg px-3 py-2 text-sm" value={statusFilter} onChange={e => { setStatusFilter(e.target.value) }}>
-					<option value="">All Statuses</option>
-					{["new","in_progress","pending_patient","escalated","resolved","closed"].map(s => <option key={s} value={s}>{s.replace(/_/g," ")}</option>)}
-				</select>
-				<select className="border rounded-lg px-3 py-2 text-sm" value={priorityFilter} onChange={e => { setPriorityFilter(e.target.value) }}>
-					<option value="">All Priorities</option>
-					{["critical","high","medium","low"].map(p => <option key={p} value={p}>{p}</option>)}
-				</select>
-			</div>
-
-			{loading ? <div className="space-y-2">{[...Array(6)].map((_,i) => <div key={i} className="bg-muted h-14 animate-pulse rounded-lg" />)}</div> : (
-				<div className="bg-card border rounded-xl overflow-hidden">
-					<table className="w-full text-sm">
-						<thead className="bg-muted/50">
-							<tr>{["Case No","Title","Type","Priority","Status","Dept","Channel","SLA","Created"].map(h => <th key={h} className="text-left px-4 py-3 font-medium">{h}</th>)}</tr>
-						</thead>
-						<tbody className="divide-y">
-							{cases.length === 0 ? <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No cases found</td></tr> : cases.map(c => (
-								<tr key={c.id} className={`hover:bg-muted/30 cursor-pointer ${isSlaBreached(c) ? "border-l-2 border-l-red-500" : ""}`}>
-									<td className="px-4 py-3 font-mono text-xs">{c.caseNo}</td>
-									<td className="px-4 py-3"><div className="font-medium max-w-[200px] truncate">{c.title}</div>{c.aiSentiment && <span className="text-xs">{SENTIMENT_ICON[c.aiSentiment]}</span>}</td>
-									<td className="px-4 py-3 text-muted-foreground capitalize text-xs">{c.caseType?.replace(/_/g," ")}</td>
-									<td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_BADGE[c.priority] ?? ""}`}>{c.priority}</span></td>
-									<td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? ""}`}>{c.status.replace(/_/g," ")}</span></td>
-									<td className="px-4 py-3 text-xs text-muted-foreground">{c.department}</td>
-									<td className="px-4 py-3 text-lg">{CHANNEL_ICON[c.channelOrigin] ?? "?"}</td>
-									<td className="px-4 py-3 text-xs">{isSlaBreached(c) ? <span className="text-red-600 font-semibold">⚠ Breached</span> : c.slaDeadline ? new Date(c.slaDeadline).toLocaleDateString() : "—"}</td>
-									<td className="px-4 py-3 text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleDateString()}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
+				<div>
+					<h1 className="text-2xl font-semibold tracking-tight">Cases</h1>
+					<p className="text-sm text-muted-foreground">{cases.length} total cases</p>
 				</div>
-			)}
+				<Button size="sm" onClick={() => setShowNew(true)}>
+					<Plus className="mr-1.5 h-4 w-4" /> New Case
+				</Button>
+			</div>
+
+			<Card>
+				<CardHeader className="pb-3">
+					<div className="flex flex-wrap items-center gap-3">
+						<div className="relative flex-1 min-w-48">
+							<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+							<Input className="pl-8 h-9" placeholder="Search cases…" value={search} onChange={e => setSearch(e.target.value)} />
+						</div>
+						<Select value={filterStatus} onValueChange={setFilterStatus}>
+							<SelectTrigger className="h-9 w-36">
+								<Filter className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+								<SelectValue placeholder="Status" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All statuses</SelectItem>
+								{["new","open","in_review","pending","resolved","closed","escalated"].map(s => (
+									<SelectItem key={s} value={s} className="capitalize">{s.replace(/_/g, " ")}</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<Select value={filterPriority} onValueChange={setFilterPriority}>
+							<SelectTrigger className="h-9 w-36">
+								<ChevronDown className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+								<SelectValue placeholder="Priority" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All priorities</SelectItem>
+								{PRIORITIES.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}
+							</SelectContent>
+						</Select>
+						{(filterStatus !== "all" || filterPriority !== "all" || search) && (
+							<Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setSearch(""); setFilterStatus("all"); setFilterPriority("all") }}>
+								<X className="h-4 w-4" />
+							</Button>
+						)}
+					</div>
+				</CardHeader>
+				<Separator />
+				<CardContent className="p-0">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Case No.</TableHead>
+								<TableHead>Title</TableHead>
+								<TableHead>Status</TableHead>
+								<TableHead>Priority</TableHead>
+								<TableHead>Department</TableHead>
+								<TableHead>SLA</TableHead>
+								<TableHead>Created</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{loading ? (
+								[...Array(5)].map((_, i) => (
+									<TableRow key={i}>
+										{[...Array(7)].map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
+									</TableRow>
+								))
+							) : filtered.length === 0 ? (
+								<TableRow>
+									<TableCell colSpan={7} className="py-12 text-center">
+										<div className="flex flex-col items-center gap-2 text-muted-foreground">
+											<FolderOpen className="h-8 w-8" />
+											<p className="text-sm">No cases found</p>
+										</div>
+									</TableCell>
+								</TableRow>
+							) : (
+								filtered.map(c => (
+									<TableRow key={c.id}>
+										<TableCell className="font-mono text-xs text-muted-foreground">{c.caseNo}</TableCell>
+										<TableCell className="font-medium max-w-48 truncate">{c.title}</TableCell>
+										<TableCell>
+											<Badge variant={STATUS_VARIANT[c.status] ?? "secondary"} className="capitalize text-xs">
+												{c.status.replace(/_/g, " ")}
+											</Badge>
+										</TableCell>
+										<TableCell>
+											<Badge variant={PRIORITY_VARIANT[c.priority] ?? "secondary"} className="capitalize text-xs">
+												{c.priority}
+											</Badge>
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">{c.department || "—"}</TableCell>
+										<TableCell>
+											{c.slaDeadline ? (
+												isSlaBreached(c.slaDeadline) ? (
+													<div className="flex items-center gap-1 text-destructive">
+														<AlertCircle className="h-3.5 w-3.5" />
+														<span className="text-xs font-medium">Breached</span>
+													</div>
+												) : (
+													<div className="flex items-center gap-1 text-muted-foreground">
+														<Clock className="h-3.5 w-3.5" />
+														<span className="text-xs">{new Date(c.slaDeadline).toLocaleDateString()}</span>
+													</div>
+												)
+											) : (
+												<span className="text-xs text-muted-foreground">—</span>
+											)}
+										</TableCell>
+										<TableCell className="text-xs text-muted-foreground">
+											{new Date(c.createdAt).toLocaleDateString()}
+										</TableCell>
+									</TableRow>
+								))
+							)}
+						</TableBody>
+					</Table>
+				</CardContent>
+			</Card>
+
+			{showNew && <NewCaseModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} />}
 		</div>
 	)
 }

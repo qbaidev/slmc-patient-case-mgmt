@@ -1,115 +1,227 @@
 "use client"
 import { useEffect, useState } from "react"
+import {
+	FolderOpen,
+	AlertTriangle,
+	CheckCircle2,
+	Clock,
+	TrendingUp,
+	Plus,
+	ArrowRight,
+} from "lucide-react"
+import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/core/components/ui/card"
+import { Badge } from "@/core/components/ui/badge"
+import { Button } from "@/core/components/ui/button"
+import { Skeleton } from "@/core/components/ui/skeleton"
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api"
 const V = process.env.NEXT_PUBLIC_API_VERSION ?? "v1"
 
-interface Stats { total: number; open: number; slaBreached: number; byStatus: Record<string, number>; byPriority: Record<string, number>; byDept: Record<string, number> }
+interface Stats {
+	total: number
+	open: number
+	slaBreached: number
+	byStatus: Record<string, number>
+	byPriority: Record<string, number>
+	byDept: Record<string, number>
+}
 
-const PRIORITY_COLOR: Record<string, string> = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-yellow-500", low: "bg-green-500" }
-const STATUS_COLOR: Record<string, string> = { new: "bg-blue-100 text-blue-700", in_progress: "bg-yellow-100 text-yellow-700", escalated: "bg-red-100 text-red-700", resolved: "bg-green-100 text-green-700", closed: "bg-gray-100 text-gray-600", pending_patient: "bg-purple-100 text-purple-700" }
+interface Incident {
+	id: string
+	title: string
+	status: string
+	severity: string
+}
+
+const PRIORITY_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+	critical: "destructive",
+	high: "destructive",
+	medium: "secondary",
+	low: "outline",
+}
+
+const STATUS_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+	new: "default",
+	open: "default",
+	in_review: "secondary",
+	pending: "secondary",
+	resolved: "outline",
+	closed: "outline",
+	escalated: "destructive",
+}
+
+const KPI_CARDS = [
+	{ key: "total", label: "Total Cases", icon: FolderOpen, desc: "All time" },
+	{ key: "open", label: "Open Cases", icon: Clock, desc: "Awaiting resolution" },
+	{ key: "slaBreached", label: "SLA Breached", icon: AlertTriangle, desc: "Requires attention" },
+	{ key: "resolved", label: "Resolved", icon: CheckCircle2, desc: "Closed + resolved" },
+]
 
 export default function DashboardPage() {
 	const [stats, setStats] = useState<Stats | null>(null)
-	const [incidents, setIncidents] = useState<{ id: string; title: string; status: string; severity: string }[]>([])
+	const [incidents, setIncidents] = useState<Incident[]>([])
 	const [loading, setLoading] = useState(true)
 
 	useEffect(() => {
 		Promise.all([
 			fetch(`${API}/${V}/cases/stats`).then(r => r.json()),
 			fetch(`${API}/${V}/major-incidents`).then(r => r.json()),
-		]).then(([s, inc]) => {
-			setStats(s)
-			setIncidents(Array.isArray(inc) ? inc.filter((i: { status: string }) => i.status === "active").slice(0, 3) : [])
-			setLoading(false)
-		}).catch(() => setLoading(false))
+		])
+			.then(([s, inc]) => {
+				setStats(s)
+				setIncidents(Array.isArray(inc) ? inc.filter((i: Incident) => i.status === "active").slice(0, 3) : [])
+			})
+			.catch(() => {})
+			.finally(() => setLoading(false))
 	}, [])
 
-	if (loading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <div key={i} className="bg-muted h-24 animate-pulse rounded-xl" />)}</div>
+	const kpiValues: Record<string, number> = {
+		total: stats?.total ?? 0,
+		open: stats?.open ?? 0,
+		slaBreached: stats?.slaBreached ?? 0,
+		resolved: (stats?.byStatus?.["resolved"] ?? 0) + (stats?.byStatus?.["closed"] ?? 0),
+	}
 
 	return (
 		<div className="space-y-6">
-			<div>
-				<h1 className="text-2xl font-bold">SLMC Case Management Dashboard</h1>
-				<p className="text-muted-foreground mt-1">St. Luke's Medical Center — Patient Case Management System</p>
+			{/* Page header */}
+			<div className="flex items-center justify-between">
+				<div>
+					<h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+					<p className="text-sm text-muted-foreground">SLMC Patient Case Management overview</p>
+				</div>
+				<Link href="/cases">
+					<Button size="sm">
+						<Plus className="mr-1.5 h-4 w-4" />
+						New Case
+					</Button>
+				</Link>
 			</div>
 
-			{/* KPI Cards */}
+			{/* KPI cards */}
 			<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-				{[
-					{ label: "Total Cases", value: stats?.total ?? 0, icon: "📋", color: "bg-blue-500" },
-					{ label: "Open Cases", value: stats?.open ?? 0, icon: "🔓", color: "bg-orange-500" },
-					{ label: "SLA Breached", value: stats?.slaBreached ?? 0, icon: "⚠️", color: "bg-red-500" },
-					{ label: "Resolved", value: (stats?.byStatus?.["resolved"] ?? 0) + (stats?.byStatus?.["closed"] ?? 0), icon: "✅", color: "bg-green-500" },
-				].map(c => (
-					<div key={c.label} className="bg-card border rounded-xl p-4">
-						<div className={`${c.color} text-white rounded-lg w-10 h-10 flex items-center justify-center text-xl mb-3`}>{c.icon}</div>
-						<div className="text-3xl font-bold">{c.value}</div>
-						<div className="text-muted-foreground text-sm">{c.label}</div>
-					</div>
-				))}
+				{KPI_CARDS.map(({ key, label, icon: Icon, desc }) =>
+					loading ? (
+						<Skeleton key={key} className="h-28 rounded-xl" />
+					) : (
+						<Card key={key}>
+							<CardHeader className="flex flex-row items-center justify-between pb-2">
+								<CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+								<Icon className="h-4 w-4 text-muted-foreground" />
+							</CardHeader>
+							<CardContent>
+								<p className="text-3xl font-bold">{kpiValues[key]}</p>
+								<p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
+							</CardContent>
+						</Card>
+					)
+				)}
 			</div>
 
 			<div className="grid gap-4 md:grid-cols-2">
 				{/* By Status */}
-				<div className="bg-card border rounded-xl p-5">
-					<h2 className="font-semibold mb-4">Cases by Status</h2>
-					<div className="space-y-2">
-						{Object.entries(stats?.byStatus ?? {}).map(([status, count]) => (
-							<div key={status} className="flex items-center justify-between">
-								<span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLOR[status] ?? "bg-gray-100 text-gray-700"}`}>{status.replace(/_/g, " ")}</span>
-								<span className="font-semibold text-sm">{count as number}</span>
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm font-medium">Cases by Status</CardTitle>
+						<CardDescription>Current distribution</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{loading ? (
+							<div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}</div>
+						) : (
+							<div className="space-y-2">
+								{Object.entries(stats?.byStatus ?? {}).map(([status, count]) => (
+									<div key={status} className="flex items-center justify-between">
+										<Badge variant={STATUS_VARIANT[status] ?? "secondary"} className="capitalize">
+											{status.replace(/_/g, " ")}
+										</Badge>
+										<span className="text-sm font-semibold tabular-nums">{count as number}</span>
+									</div>
+								))}
 							</div>
-						))}
-					</div>
-				</div>
+						)}
+					</CardContent>
+				</Card>
 
 				{/* By Priority */}
-				<div className="bg-card border rounded-xl p-5">
-					<h2 className="font-semibold mb-4">Cases by Priority</h2>
-					<div className="space-y-3">
-						{Object.entries(stats?.byPriority ?? {}).map(([priority, count]) => (
-							<div key={priority} className="flex items-center gap-3">
-								<div className={`w-3 h-3 rounded-full ${PRIORITY_COLOR[priority] ?? "bg-gray-400"}`} />
-								<span className="capitalize text-sm flex-1">{priority}</span>
-								<span className="font-semibold text-sm">{count as number}</span>
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm font-medium">Cases by Priority</CardTitle>
+						<CardDescription>Risk breakdown</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{loading ? (
+							<div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}</div>
+						) : (
+							<div className="space-y-3">
+								{Object.entries(stats?.byPriority ?? {}).map(([priority, count]) => {
+									const total = stats?.total ?? 1
+									const pct = Math.round(((count as number) / total) * 100)
+									return (
+										<div key={priority} className="space-y-1">
+											<div className="flex items-center justify-between text-sm">
+												<span className="capitalize font-medium">{priority}</span>
+												<span className="text-muted-foreground tabular-nums">{count as number}</span>
+											</div>
+											<div className="h-1.5 w-full rounded-full bg-muted">
+												<div
+													className="h-1.5 rounded-full bg-primary transition-all"
+													style={{ width: `${pct}%` }}
+												/>
+											</div>
+										</div>
+									)
+								})}
 							</div>
-						))}
-					</div>
-				</div>
+						)}
+					</CardContent>
+				</Card>
 			</div>
 
 			{/* Active Major Incidents */}
-			{incidents.length > 0 && (
-				<div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-xl p-5">
-					<h2 className="font-semibold text-red-700 dark:text-red-400 mb-3">🚨 Active Major Incidents</h2>
-					<div className="space-y-2">
+			{!loading && incidents.length > 0 && (
+				<Card className="border-destructive/40 bg-destructive/5">
+					<CardHeader className="flex flex-row items-center gap-2 pb-3">
+						<AlertTriangle className="h-4 w-4 text-destructive" />
+						<CardTitle className="text-sm font-medium text-destructive">Active Major Incidents</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-2">
 						{incidents.map(inc => (
-							<div key={inc.id} className="flex items-center justify-between bg-white dark:bg-red-950/30 rounded-lg px-3 py-2 border border-red-100 dark:border-red-800">
+							<div key={inc.id} className="flex items-center justify-between rounded-lg border bg-card px-3 py-2">
 								<span className="text-sm font-medium">{inc.title}</span>
-								<span className={`text-xs px-2 py-1 rounded-full font-medium ${inc.severity === "critical" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>{inc.severity}</span>
+								<Badge variant={inc.severity === "critical" ? "destructive" : "secondary"} className="capitalize">
+									{inc.severity}
+								</Badge>
 							</div>
 						))}
-					</div>
-				</div>
+					</CardContent>
+				</Card>
 			)}
 
 			{/* Quick Actions */}
-			<div className="bg-card border rounded-xl p-5">
-				<h2 className="font-semibold mb-4">Quick Actions</h2>
-				<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-					{[
-						{ label: "New Case", href: "/cases", icon: "➕" },
-						{ label: "All Cases", href: "/cases", icon: "📋" },
-						{ label: "Patients", href: "/patients", icon: "🏥" },
-						{ label: "Knowledge Base", href: "/knowledge-base", icon: "📚" },
-					].map(a => (
-						<a key={a.label} href={a.href} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent transition-colors">
-							<span className="text-2xl">{a.icon}</span><span className="text-sm font-medium">{a.label}</span>
-						</a>
-					))}
-				</div>
-			</div>
+			<Card>
+				<CardHeader>
+					<CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+						{[
+							{ label: "New Case", href: "/cases", icon: Plus },
+							{ label: "All Cases", href: "/cases", icon: FolderOpen },
+							{ label: "Patients", href: "/patients", icon: TrendingUp },
+							{ label: "Knowledge Base", href: "/knowledge-base", icon: ArrowRight },
+						].map(({ label, href, icon: Icon }) => (
+							<Link key={label} href={href}>
+								<Button variant="outline" className="w-full justify-start gap-2">
+									<Icon className="h-4 w-4" />
+									{label}
+								</Button>
+							</Link>
+						))}
+					</div>
+				</CardContent>
+			</Card>
 		</div>
 	)
 }

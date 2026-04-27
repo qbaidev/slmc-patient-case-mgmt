@@ -1,9 +1,12 @@
 "use client"
-
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Loader2, LogIn } from "lucide-react"
 import { LoginForm } from "@/features/auth/login/components/login-form"
 import { authClient } from "@/services/better-auth/auth-client"
-import { useRouter } from "next/navigation"
+import { Button } from "@/core/components/ui/button"
+import { Badge } from "@/core/components/ui/badge"
+import { Separator } from "@/core/components/ui/separator"
 
 const DEV_ACCOUNTS = [
 	{ email: "dev@openclaw.local", password: "DevAccess123!", name: "OpenClaw Dev", role: "Dev" },
@@ -18,7 +21,6 @@ export default function LoginPage() {
 	const router = useRouter()
 	const [loading, setLoading] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
-	const [showAll, setShowAll] = useState(false)
 
 	async function quickLogin(email: string, password: string) {
 		setLoading(email)
@@ -28,62 +30,46 @@ export default function LoginPage() {
 			if (result.error) throw new Error(result.error.message ?? "Failed to sign in")
 			router.push("/dashboard")
 			router.refresh()
-		} catch (e) {
-			setError(e instanceof Error ? e.message : "Login failed")
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Login failed")
+		} finally {
 			setLoading(null)
 		}
 	}
 
-	const visibleAccounts = showAll ? DEV_ACCOUNTS : DEV_ACCOUNTS.slice(0, 1)
-
 	return (
-		<section className="flex flex-1 flex-col items-center justify-center gap-6">
-			{/* Dev Access Panel */}
-			<div className="w-full max-w-md rounded-xl border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/40 p-4 space-y-3">
+		<div className="space-y-6">
+			<LoginForm />
+
+			{/* Dev access panel */}
+			<div className="rounded-xl border bg-muted/40 p-4 space-y-3">
 				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-2">
-						<span className="text-sm font-semibold text-violet-800 dark:text-violet-300">⚡ Quick Dev Access</span>
-					</div>
-					<button
-						onClick={() => setShowAll(p => !p)}
-						className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
-					>
-						{showAll ? "Show less ▲" : `Show all ${DEV_ACCOUNTS.length} accounts ▼`}
-					</button>
+					<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dev Quick Access</p>
+					<Badge variant="secondary" className="text-xs">Demo</Badge>
 				</div>
-
-				<p className="text-xs text-violet-600 dark:text-violet-400">
-					All accounts use password: <code className="font-mono bg-violet-100 dark:bg-violet-900 px-1 rounded">DevAccess123!</code>
-				</p>
-
-				{error && <p className="text-xs text-red-500">{error}</p>}
-
-				<div className="space-y-2">
-					{visibleAccounts.map(acc => (
-						<div key={acc.email} className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-violet-900/30 border border-violet-100 dark:border-violet-800 px-3 py-2">
-							<div className="min-w-0">
-								<div className="flex items-center gap-1.5">
-									<span className="text-xs font-semibold text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-800 px-1.5 py-0.5 rounded">
-										{acc.role}
-									</span>
-									<span className="text-xs font-medium truncate">{acc.name}</span>
-								</div>
-								<div className="text-xs text-muted-foreground font-mono truncate mt-0.5">{acc.email}</div>
-							</div>
-							<button
-								onClick={() => quickLogin(acc.email, acc.password)}
-								disabled={loading !== null}
-								className="shrink-0 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
-							>
-								{loading === acc.email ? "…" : "Login"}
-							</button>
-						</div>
+				<Separator />
+				<div className="grid grid-cols-2 gap-2">
+					{DEV_ACCOUNTS.map(acc => (
+						<Button
+							key={acc.email}
+							variant="outline"
+							size="sm"
+							className="justify-start gap-2 h-9 text-xs"
+							disabled={loading === acc.email}
+							onClick={() => quickLogin(acc.email, acc.password)}
+						>
+							{loading === acc.email
+								? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+								: <LogIn className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+							}
+							<span className="truncate">{acc.name}</span>
+							<Badge variant="secondary" className="ml-auto text-xs shrink-0">{acc.role}</Badge>
+						</Button>
 					))}
 				</div>
+				{error && <p className="text-xs text-destructive">{error}</p>}
+				<p className="text-xs text-muted-foreground text-center">All accounts use <code className="bg-muted px-1 rounded">DevAccess123!</code></p>
 			</div>
-
-			{/* Standard login form */}
-			<LoginForm className="w-full" />
-		</section>
+		</div>
 	)
 }
