@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-	title: "Turbo Claw",
+	title: "SLMC Patient Case Management",
 	description: "SLMC Hospital Patient Case Management System",
 }
 
