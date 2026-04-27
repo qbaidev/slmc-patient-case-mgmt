@@ -22,11 +22,27 @@ interface JsonResponse {
 function createAuthMiddleware(versionedAuthPaths: string[]) {
 	const handler = toNodeHandler(getAuth())
 
+	const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000").split(",").map(o => o.trim())
+
 	return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
 		const url = req.url ?? ""
+		const origin = (req.headers.origin as string) ?? ""
 		const matchedPath = versionedAuthPaths.find(path => url.startsWith(path))
 
 		if (matchedPath) {
+			// Inject CORS headers since this bypasses NestJS middleware
+			if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+				res.setHeader("Access-Control-Allow-Origin", origin)
+				res.setHeader("Access-Control-Allow-Credentials", "true")
+				res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+				res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,Cookie")
+			}
+			// Handle preflight
+			if (req.method === "OPTIONS") {
+				res.writeHead(204)
+				res.end()
+				return
+			}
 			req.url = url.replace(matchedPath, AUTH_BASE_PATH)
 			return handler(req, res)
 		}
