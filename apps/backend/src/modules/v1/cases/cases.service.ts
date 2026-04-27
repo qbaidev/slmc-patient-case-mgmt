@@ -83,11 +83,17 @@ export class CasesService {
 
 	async getStats() {
 		const all = await db.select().from(cases)
-		const byStatus = all.reduce((acc, c) => { acc[c.status] = (acc[c.status] ?? 0) + 1; return acc }, {} as Record<string, number>)
-		const byPriority = all.reduce((acc, c) => { acc[c.priority] = (acc[c.priority] ?? 0) + 1; return acc }, {} as Record<string, number>)
-		const byDept = all.reduce((acc, c) => { if (c.department) { acc[c.department] = (acc[c.department] ?? 0) + 1 }; return acc }, {} as Record<string, number>)
+		const byStatus: Record<string, number> = {}
+		const byPriority: Record<string, number> = {}
+		const byDept: Record<string, number> = {}
 		const now = new Date()
-		const slaBreached = all.filter(c => c.slaDeadline && new Date(c.slaDeadline) < now && !["resolved","closed"].includes(c.status)).length
+		let slaBreached = 0
+		for (const c of all) {
+			const st = c.status ?? "new"; byStatus[st] = (byStatus[st] ?? 0) + 1
+			const pr = c.priority ?? "medium"; byPriority[pr] = (byPriority[pr] ?? 0) + 1
+			if (c.department) { byDept[c.department] = (byDept[c.department] ?? 0) + 1 }
+			if (c.slaDeadline && new Date(c.slaDeadline) < now && !(["resolved","closed"].includes(c.status ?? ""))) slaBreached++
+		}
 		return { total: all.length, byStatus, byPriority, byDept, slaBreached, open: (byStatus["new"] ?? 0) + (byStatus["in_progress"] ?? 0) + (byStatus["pending_patient"] ?? 0) + (byStatus["escalated"] ?? 0) }
 	}
 }
