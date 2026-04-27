@@ -20,8 +20,8 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
 				<div className="flex items-center gap-3">
 					<span className="text-2xl">🏨</span>
 					<div>
-						<div className="font-bold text-sm">SLMC Case Management</div>
-						<div className="text-xs text-muted-foreground">St. Luke's Medical Center</div>
+						<div className="font-bold text-sm">Turbo Claw</div>
+						<div className="text-xs text-muted-foreground">SLMC Patient Case Management</div>
 					</div>
 				</div>
 				<div className="flex items-center gap-3">

@@ -23,8 +23,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-	title: "SLMC Patient Case Management",
-	description: "Turborepo monorepo template with Next.js, NestJS, and Flutter",
+	title: "Turbo Claw",
+	description: "SLMC Hospital Patient Case Management System",
 }
 
 export default function RootLayout({

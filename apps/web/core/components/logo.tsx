@@ -46,7 +46,7 @@ export interface LogoProps {
 }
 
 export function Logo({
-	text = "SLMC Case Management",
+	text = "Turbo Claw",
 	href,
 	size = "lg",
 	variant = "link",
